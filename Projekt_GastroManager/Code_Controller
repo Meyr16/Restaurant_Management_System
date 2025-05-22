@@ -1,1 +1,39 @@
 # Teil der die Hardware Steuert
+
+from machine import Pin
+import time
+
+# Variablen zur Zählung der Tastendrücke
+Service_erwuenscht = 0
+Rechnung_erwuenscht = 0
+
+# GPIO Pins für die Taster
+button_service = Pin(14, Pin.IN, Pin.PULL_DOWN)
+button_rechnung = Pin(15, Pin.IN, Pin.PULL_DOWN)
+
+# Entprell-Zeit in Sekunden
+debounce_time = 0.2
+
+print("Tasterprogramm gestartet...")
+
+while True:
+    # Prüfe Service-Taster
+    if button_service.value() == 1:
+        Service_erwuenscht += 1
+        print("Service erwünscht:", Service_erwuenscht)
+        time.sleep(debounce_time)  # Entprellung
+
+        # Warte bis der Taster losgelassen wird
+        while button_service.value() == 1:
+            time.sleep(0.01)
+
+    # Prüfe Rechnung-Taster
+    if button_rechnung.value() == 1:
+        Rechnung_erwuenscht += 1
+        print("Rechnung erwünscht:", Rechnung_erwuenscht)
+        time.sleep(debounce_time)  # Entprellung
+
+        # Warte bis der Taster losgelassen wird
+        while button_rechnung.value() == 1:
+            time.sleep(0.01)
+
