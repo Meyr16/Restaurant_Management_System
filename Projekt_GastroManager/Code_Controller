@@ -1,39 +1,66 @@
-# Teil der die Hardware Steuert
-
-from machine import Pin
 import time
+import board
+import digitalio
 
-# Variablen zur Zählung der Tastendrücke
+# Variablen zur Zählung
 Service_erwuenscht = 0
 Rechnung_erwuenscht = 0
 
-# GPIO Pins für die Taster
-button_service = Pin(14, Pin.IN, Pin.PULL_DOWN)
-button_rechnung = Pin(15, Pin.IN, Pin.PULL_DOWN)
+# Taster Setup (Pull-down)
+button_service = digitalio.DigitalInOut(board.GP14)
+button_service.direction = digitalio.Direction.INPUT
+button_service.pull = digitalio.Pull.DOWN
 
-# Entprell-Zeit in Sekunden
+button_rechnung = digitalio.DigitalInOut(board.GP15)
+button_rechnung.direction = digitalio.Direction.INPUT
+button_rechnung.pull = digitalio.Pull.DOWN
+
+# RGB LED Setup (gemeinsame Kathode: HIGH = AN)
+led_rot = digitalio.DigitalInOut(board.GP16)
+led_rot.direction = digitalio.Direction.OUTPUT
+
+led_gruen = digitalio.DigitalInOut(board.GP17)
+led_gruen.direction = digitalio.Direction.OUTPUT
+
+led_blau = digitalio.DigitalInOut(board.GP18)
+led_blau.direction = digitalio.Direction.OUTPUT
+
+# Hilfsfunktion: RGB setzen
+def set_rgb(rot, gruen, blau):
+    led_rot.value = rot
+    led_gruen.value = gruen
+    led_blau.value = blau
+
+# Start: Blau
+set_rgb(False, False, True)
+
+# Entprell-Zeit
 debounce_time = 0.2
 
-print("Tasterprogramm gestartet...")
+print("Programm gestartet...")
 
 while True:
-    # Prüfe Service-Taster
-    if button_service.value() == 1:
+    gedrueckt = False
+
+    if button_service.value:
         Service_erwuenscht += 1
         print("Service erwünscht:", Service_erwuenscht)
-        time.sleep(debounce_time)  # Entprellung
-
-        # Warte bis der Taster losgelassen wird
-        while button_service.value() == 1:
+        set_rgb(False, True, False)  # Grün
+        gedrueckt = True
+        time.sleep(debounce_time)
+        while button_service.value:
             time.sleep(0.01)
 
-    # Prüfe Rechnung-Taster
-    if button_rechnung.value() == 1:
+    if button_rechnung.value:
         Rechnung_erwuenscht += 1
         print("Rechnung erwünscht:", Rechnung_erwuenscht)
-        time.sleep(debounce_time)  # Entprellung
-
-        # Warte bis der Taster losgelassen wird
-        while button_rechnung.value() == 1:
+        set_rgb(True, False, False)  # Rot
+        gedrueckt = True
+        time.sleep(debounce_time)
+        while button_rechnung.value:
             time.sleep(0.01)
 
+    if not gedrueckt:
+        set_rgb(False, False, True)  # Blau
+
+    time.sleep(0.1)
