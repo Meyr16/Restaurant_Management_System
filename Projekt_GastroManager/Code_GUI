@@ -1,4 +1,73 @@
 # Test für das GitHub Projekt
 
-print("Hello World ")
-print("AALEN")
+import tkinter as tk
+from tkinter import messagebox
+
+class RestaurantApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Restaurant Management System")
+        self.root.geometry("600x500")
+
+        # Titel
+        title = tk.Label(root, text="Restaurant Management System", font=("Arial", 20, "bold"))
+        title.pack(pady=10)
+
+        # Frames
+        input_frame = tk.Frame(root)
+        input_frame.pack(pady=10)
+
+        # Labels & Eingaben
+        tk.Label(input_frame, text="Burger (5€):", font=("Arial", 12)).grid(row=0, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(input_frame, text="Pommes (3€):", font=("Arial", 12)).grid(row=1, column=0, sticky="w", padx=10, pady=5)
+        tk.Label(input_frame, text="Cola (2€):", font=("Arial", 12)).grid(row=2, column=0, sticky="w", padx=10, pady=5)
+
+        self.burger_qty = tk.IntVar()
+        self.fries_qty = tk.IntVar()
+        self.cola_qty = tk.IntVar()
+
+        tk.Entry(input_frame, textvariable=self.burger_qty, width=10).grid(row=0, column=1)
+        tk.Entry(input_frame, textvariable=self.fries_qty, width=10).grid(row=1, column=1)
+        tk.Entry(input_frame, textvariable=self.cola_qty, width=10).grid(row=2, column=1)
+
+        # Buttons
+        button_frame = tk.Frame(root)
+        button_frame.pack(pady=20)
+
+        tk.Button(button_frame, text="Rechnung erstellen", command=self.calculate_total, width=20).grid(row=0, column=0, padx=10)
+        tk.Button(button_frame, text="Zurücksetzen", command=self.reset_fields, width=20).grid(row=0, column=1, padx=10)
+
+        # Ausgabe
+        self.result_text = tk.Text(root, height=10, width=60)
+        self.result_text.pack(pady=10)
+
+    def calculate_total(self):
+        burger = self.burger_qty.get()
+        fries = self.fries_qty.get()
+        cola = self.cola_qty.get()
+
+        total = burger * 5 + fries * 3 + cola * 2
+
+        receipt = f"""
+        === Quittung ===
+        Burger: {burger} x 5€ = {burger * 5}€
+        Pommes: {fries} x 3€ = {fries * 3}€
+        Cola:   {cola} x 2€ = {cola * 2}€
+        ---------------------------
+        Gesamtbetrag: {total}€
+        """
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.insert(tk.END, receipt)
+
+    def reset_fields(self):
+        self.burger_qty.set(0)
+        self.fries_qty.set(0)
+        self.cola_qty.set(0)
+        self.result_text.delete(1.0, tk.END)
+
+# Hauptfenster starten
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = RestaurantApp(root)
+    root.mainloop()
+
