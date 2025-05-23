@@ -1,66 +1,65 @@
+from machine import Pin
 import time
-import board
-import digitalio
 
 # Variablen zur Zählung
 Service_erwuenscht = 0
 Rechnung_erwuenscht = 0
 
 # Taster Setup (Pull-down)
-button_service = digitalio.DigitalInOut(board.GP14)
-button_service.direction = digitalio.Direction.INPUT
-button_service.pull = digitalio.Pull.DOWN
+# GP14 ist der GPIO-Pin 14
+button_service = Pin(14, Pin.IN, Pin.PULL_DOWN)
 
-button_rechnung = digitalio.DigitalInOut(board.GP15)
-button_rechnung.direction = digitalio.Direction.INPUT
-button_rechnung.pull = digitalio.Pull.DOWN
+# GP15 ist der GPIO-Pin 15
+button_rechnung = Pin(15, Pin.IN, Pin.PULL_DOWN)
 
 # RGB LED Setup (gemeinsame Kathode: HIGH = AN)
-led_rot = digitalio.DigitalInOut(board.GP16)
-led_rot.direction = digitalio.Direction.OUTPUT
-
-led_gruen = digitalio.DigitalInOut(board.GP17)
-led_gruen.direction = digitalio.Direction.OUTPUT
-
-led_blau = digitalio.DigitalInOut(board.GP18)
-led_blau.direction = digitalio.Direction.OUTPUT
+# GP16, GP17, GP18 sind die GPIO-Pins für Rot, Grün, Blau
+led_rot = Pin(16, Pin.OUT)
+led_gruen = Pin(17, Pin.OUT)
+led_blau = Pin(18, Pin.OUT)
 
 # Hilfsfunktion: RGB setzen
+# True = LED an (HIGH), False = LED aus (LOW) bei gemeinsamer Kathode
 def set_rgb(rot, gruen, blau):
-    led_rot.value = rot
-    led_gruen.value = gruen
-    led_blau.value = blau
+    led_rot.value(rot)
+    led_gruen.value(gruen)
+    led_blau.value(blau)
 
 # Start: Blau
-set_rgb(False, False, True)
+set_rgb(False, False, True) # Blau einschalten
 
-# Entprell-Zeit
+# Entprell-Zeit in Sekunden
 debounce_time = 0.2
 
 print("Programm gestartet...")
 
 while True:
-    gedrueckt = False
+    gedrueckt = False # Flag, um zu prüfen, ob ein Taster gedrückt wurde
 
-    if button_service.value:
+    # Überprüfen, ob der Service-Taster gedrückt wurde
+    if button_service.value(): # .value() gibt True zurück, wenn der Taster gedrückt ist (wegen Pull-Down)
         Service_erwuenscht += 1
         print("Service erwünscht:", Service_erwuenscht)
-        set_rgb(False, True, False)  # Grün
+        set_rgb(False, True, False)  # LED Grün einschalten
         gedrueckt = True
-        time.sleep(debounce_time)
-        while button_service.value:
+        time.sleep(debounce_time) # Kurz warten, um Prellen zu vermeiden
+        # Warten, bis der Taster losgelassen wird
+        while button_service.value():
             time.sleep(0.01)
 
-    if button_rechnung.value:
+    # Überprüfen, ob der Rechnung-Taster gedrückt wurde
+    if button_rechnung.value(): # .value() gibt True zurück, wenn der Taster gedrückt ist (wegen Pull-Down)
         Rechnung_erwuenscht += 1
         print("Rechnung erwünscht:", Rechnung_erwuenscht)
-        set_rgb(True, False, False)  # Rot
+        set_rgb(True, False, False)  # LED Rot einschalten
         gedrueckt = True
-        time.sleep(debounce_time)
-        while button_rechnung.value:
+        time.sleep(debounce_time) # Kurz warten, um Prellen zu vermeiden
+        # Warten, bis der Taster losgelassen wird
+        while button_rechnung.value():
             time.sleep(0.01)
 
+    # Wenn kein Taster gedrückt ist, soll die LED blau leuchten
     if not gedrueckt:
-        set_rgb(False, False, True)  # Blau
+        set_rgb(False, False, True)  # LED Blau einschalten
 
-    time.sleep(0.1)
+    time.sleep(0.1) # Kurze Pause im Hauptloop, um CPU-Last zu reduzieren
