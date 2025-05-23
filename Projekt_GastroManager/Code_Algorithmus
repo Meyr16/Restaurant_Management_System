@@ -1,4 +1,4 @@
-
+#test
 from datetime import datetime, timedelta
 
 class Tisch:
@@ -13,7 +13,6 @@ class Tisch:
             if startzeit < res_ende and endzeit > res_start:
                 return False
         return True
-
     def reservieren(self, startzeit, dauer=timedelta(hours=2)):
         if self.ist_verfuegbar(startzeit, dauer):
             self.reservierungen.append((startzeit, startzeit + dauer))
