@@ -1,89 +1,142 @@
-from machine import Pin
+from machine import Pin,PWM
 import time
 
-# --- Konfiguration der GPIO-Pins ---
-# Taster (Pull-Down Konfiguration: HIGH wenn gedrückt, LOW sonst)
-# Pin 14 für "Service"
-PIN_SERVICE_BUTTON = 14
-# Pin 15 für "Rechnung"
-PIN_RECHNUNG_BUTTON = 15
+# Übergabe Variablen für GUI
 
-# RGB LED (gemeinsame Kathode: HIGH = AN, LOW = AUS)
-# Passe diese Pins an, falls deine LED anders verdrahtet ist
-PIN_LED_ROT   = 16
-PIN_LED_GRUEN = 17
-PIN_LED_BLAU  = 18
+TISCH_xxx_SERVIVE_ERLEDIGT = False
+TISCH_xxx_RECHNUNG_ERLEDIGT = False
+TISCH_xxx_GESEHEN = True
+
+# --- Konfiguration der GPIO-Pins ---
+PIN_SERVICE_BUTTON = 14     # Pin 14 für "Service"
+PIN_RECHNUNG_BUTTON = 15    # Pin 15 für "Rechnung"
 
 # Entprellzeit in Sekunden (für beide Taster)
-DEBOUNCE_TIME = 0.2 # 200 Millisekunden
+DEBOUNCE_TIME = 0.2 
 
 # --- Variablen zur Zählung ---
 service_erwuenscht_zaehler = 0
 rechnung_erwuenscht_zaehler = 0
 
 # --- Pin-Initialisierung ---
-# Taster-Pins als Eingang mit Pull-Down Widerstand
+# EingangsPinns konfigurieren
 button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
 button_rechnung = Pin(PIN_RECHNUNG_BUTTON, Pin.IN, Pin.PULL_DOWN)
 
-# LED-Pins als Ausgang
-led_rot   = Pin(PIN_LED_ROT, Pin.OUT)
-led_gruen = Pin(PIN_LED_GRUEN, Pin.OUT)
-led_blau  = Pin(PIN_LED_BLAU, Pin.OUT)
-
-# --- Hilfsfunktion zum Steuern der RGB-LED ---
-# True = LED leuchtet (HIGH), False = LED ist aus (LOW) bei gemeinsamer Kathode
-def set_rgb(rot, gruen, blau):
-    led_rot.value(rot)
-    led_gruen.value(gruen)
-    led_blau.value(blau)
-
-# --- Initialisierung der LED-Farbe ---
-# Startet mit Blau, um anzuzeigen, dass das System bereit ist
-set_rgb(False, False, True) # Blau
 
 print("Programm gestartet. Warte auf Tasterdruck...")
 print(f"Service Zähler: {service_erwuenscht_zaehler}, Rechnung Zähler: {rechnung_erwuenscht_zaehler}")
 
 # --- Hauptprogrammschleife ---
 while True:
-    # Flag, um festzuhalten, ob irgendein Taster gerade gedrückt wurde
-    # Dies hilft, die LED-Farbe entsprechend zu setzen
+    class RGBLED:
+    # Vordefinierte Farben als statische Dictionary-Variable der Klasse
+    # Die Werte sind Tupel (Rot, Grün, Blau) im Bereich 0-255 (für 8-Bit RGB)
+        COLORS = {
+            "OFF":      (0,   0,   0),
+            "RED":      (255, 0,   0),
+            "GREEN":    (0,   255, 0),
+            "BLUE":     (0,   0,   255),
+            "YELLOW":   (255, 255, 0),
+            "CYAN":     (0,   255, 255),
+            "MAGENTA":  (255, 0,   255),
+            "WHITE":    (255, 255, 255),
+            "ORANGE":   (255, 128, 0),
+            "PURPLE":   (128, 0,   128),
+            "LIGHT_BLUE": (128, 128, 255),
+        }
+
+        def __init__(self, pin_r, pin_g, pin_b, pwm_freq=5000):
+
+            self.pwm_freq = pwm_freq
+
+            # Initialisiere PWM-Objekte für jeden Farbkanal
+            self.pwm_r = PWM(Pin(pin_r))
+            self.pwm_g = PWM(Pin(pin_g))
+            self.pwm_b = PWM(Pin(pin_b))
+
+            # Setze die PWM-Frequenz für alle Kanäle
+            self.pwm_r.freq(self.pwm_freq)
+            self.pwm_g.freq(self.pwm_freq)
+            self.pwm_b.freq(self.pwm_freq)
+
+            # Sicherstellen, dass alle LEDs am Anfang aus sind
+            self.set_color_rgb(0, 0, 0)
+
+        def _map_value(self, value):
+    
+            return int(value * 65535 / 255) # Skaliere 0-255 auf 0-65535 (16-Bit)
+
+        def set_color_rgb(self, r, g, b):
+
+            self.pwm_r.duty_u16(self._map_value(r))
+            self.pwm_g.duty_u16(self._map_value(g))
+            self.pwm_b.duty_u16(self._map_value(b))
+
+        def set_color_by_name(self, color_name):
+
+            color_name = color_name.upper() # Namen in Großbuchstaben umwandeln
+            if color_name in self.COLORS:
+                r, g, b = self.COLORS[color_name]
+                self.set_color_rgb(r, g, b)
+            else:
+                print(f"Fehler: Farbe '{color_name}' nicht definiert.")
+                print(f"Verfügbare Farben: {', '.join(self.COLORS.keys())}")
+
+        def turn_off(self):
+            self.set_color_rgb(0, 0, 0) # Entspricht OFF
+
+        def __del__(self):
+            """
+            Wird aufgerufen, wenn das Objekt gelöscht wird.
+            Deinitialisiert die PWM-Pins, um Ressourcen freizugeben.
+            """
+            self.pwm_r.deinit()
+            self.pwm_g.deinit()
+            self.pwm_b.deinit()
+    
+    my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12)
+
     irgendein_taster_gedrueckt = False
 
     # Taster für "Service erwünscht" prüfen
-    if button_service.value(): # .value() gibt True zurück, wenn der Taster gedrückt ist
+    if button_service.value(): 
         service_erwuenscht_zaehler += 1
         print(f"Service erwünscht! Neuer Zählerstand: {service_erwuenscht_zaehler}")
-        set_rgb(False, True, False) # LED auf Grün
         irgendein_taster_gedrueckt = True
         
         # Entprellen: Warte, bis der Taster losgelassen wird ODER die maximale Entprellzeit abgelaufen ist
         start_time = time.time()
         while button_service.value() and (time.time() - start_time) < DEBOUNCE_TIME:
-            time.sleep(0.01) # Kleine Pause, um CPU zu entlasten
-        # Zusätzliche Schleife, falls Taster länger gedrückt bleibt
+            time.sleep(0.01) 
+        
         while button_service.value():
             time.sleep(0.01)
 
 
     # Taster für "Rechnung erwünscht" prüfen
-    if button_rechnung.value(): # .value() gibt True zurück, wenn der Taster gedrückt ist
+    if button_rechnung.value(): 
         rechnung_erwuenscht_zaehler += 1
         print(f"Rechnung erwünscht! Neuer Zählerstand: {rechnung_erwuenscht_zaehler}")
-        set_rgb(True, False, False) # LED auf Rot
         irgendein_taster_gedrueckt = True
         
         # Entprellen: Warte, bis der Taster losgelassen wird ODER die maximale Entprellzeit abgelaufen ist
         start_time = time.time()
         while button_rechnung.value() and (time.time() - start_time) < DEBOUNCE_TIME:
-            time.sleep(0.01) # Kleine Pause, um CPU zu entlasten
-        # Zusätzliche Schleife, falls Taster länger gedrückt bleibt
+            time.sleep(0.01)
+        
         while button_rechnung.value():
             time.sleep(0.01)
 
-    # Wenn kein Taster aktiv gedrückt ist, geht die LED zurück auf Blau
-    if not irgendein_taster_gedrueckt:
-        set_rgb(False, False, True) # LED auf Blau
-
+   # LED-Farben setzen basierend auf den Zählerständen
+    if service_erwuenscht_zaehler > 0:
+        my_rgb_led.set_color_by_name("RED")  # LED auf Rot
+    elif rechnung_erwuenscht_zaehler > 0:
+        my_rgb_led.set_color_by_name("GREEN")   # LED auf Grün
+    else:
+        my_rgb_led.set_color_by_name("BLUE")    # LED auf Blau
+ 
     time.sleep(0.05) # Kurze Pause in der Hauptschleife
+
+
+    
