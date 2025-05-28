@@ -5,7 +5,9 @@ import time
 
 TISCH_xxx_SERVIVE_ERLEDIGT = False
 TISCH_xxx_RECHNUNG_ERLEDIGT = False
-TISCH_xxx_GESEHEN = True
+TISCH_xxx_GESEHEN = False
+Tisch_xxx_RESERVIERT = False
+TISCH_xxx_BELEGT = False
 
 # --- Konfiguration der GPIO-Pins ---
 PIN_SERVICE_BUTTON = 14     # Pin 14 für "Service"
@@ -18,6 +20,10 @@ DEBOUNCE_TIME = 0.2
 service_erwuenscht_zaehler = 0
 rechnung_erwuenscht_zaehler = 0
 
+# --- Variablen ---
+
+SERVICE_ERWÜNSCHT = False
+RECHNUNG_ERWÜNSCHT = False
 # --- Pin-Initialisierung ---
 # EingangsPinns konfigurieren
 button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
@@ -27,7 +33,6 @@ button_rechnung = Pin(PIN_RECHNUNG_BUTTON, Pin.IN, Pin.PULL_DOWN)
 print("Programm gestartet. Warte auf Tasterdruck...")
 print(f"Service Zähler: {service_erwuenscht_zaehler}, Rechnung Zähler: {rechnung_erwuenscht_zaehler}")
 
-# --- Hauptprogrammschleife ---
 while True:
     class RGBLED:
     # Vordefinierte Farben als statische Dictionary-Variable der Klasse
@@ -46,8 +51,9 @@ while True:
             "LIGHT_BLUE": (128, 128, 255),
         }
 
-        def __init__(self, pin_r, pin_g, pin_b, pwm_freq=5000):
-
+        def __init__(self, pin_r, pin_g, pin_b, pwm_freq=5000, common_anode=False):
+            self.common_anode = common_anode  # True, wenn gemeinsame Anode verwendet wird
+            
             self.pwm_freq = pwm_freq
 
             # Initialisiere PWM-Objekte für jeden Farbkanal
@@ -64,9 +70,9 @@ while True:
             self.set_color_rgb(0, 0, 0)
 
         def _map_value(self, value):
-    
-            return int(value * 65535 / 255) # Skaliere 0-255 auf 0-65535 (16-Bit)
-
+            pwm_val = int(value * 65535 / 255)
+            return 65535 - pwm_val if self.common_anode else pwm_val
+            
         def set_color_rgb(self, r, g, b):
 
             self.pwm_r.duty_u16(self._map_value(r))
@@ -95,17 +101,15 @@ while True:
             self.pwm_g.deinit()
             self.pwm_b.deinit()
     
-    my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12)
+    my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12, common_anode=True)
 
     irgendein_taster_gedrueckt = False
 
-    # Taster für "Service erwünscht" prüfen
     if button_service.value(): 
         service_erwuenscht_zaehler += 1
         print(f"Service erwünscht! Neuer Zählerstand: {service_erwuenscht_zaehler}")
         irgendein_taster_gedrueckt = True
         
-        # Entprellen: Warte, bis der Taster losgelassen wird ODER die maximale Entprellzeit abgelaufen ist
         start_time = time.time()
         while button_service.value() and (time.time() - start_time) < DEBOUNCE_TIME:
             time.sleep(0.01) 
@@ -113,8 +117,6 @@ while True:
         while button_service.value():
             time.sleep(0.01)
 
-
-    # Taster für "Rechnung erwünscht" prüfen
     if button_rechnung.value(): 
         rechnung_erwuenscht_zaehler += 1
         print(f"Rechnung erwünscht! Neuer Zählerstand: {rechnung_erwuenscht_zaehler}")
@@ -129,12 +131,16 @@ while True:
             time.sleep(0.01)
 
    # LED-Farben setzen basierend auf den Zählerständen
-    if service_erwuenscht_zaehler > 0:
-        my_rgb_led.set_color_by_name("RED")  # LED auf Rot
-    elif rechnung_erwuenscht_zaehler > 0:
-        my_rgb_led.set_color_by_name("GREEN")   # LED auf Grün
-    else:
-        my_rgb_led.set_color_by_name("BLUE")    # LED auf Blau
+    if SERVICE_ERWÜNSCHT is True:
+        my_rgb_led.set_color_by_name("ORANGE")  # LED auf ORANGE für Service
+    elif RECHNUNG_ERWÜNSCHT is True:
+        my_rgb_led.set_color_by_name("ORANGE")   # LED auf ORANGE für Rechnung
+    elif Tisch_xxx_RESERVIERT is True:
+        my_rgb_led.set_color_by_name("RED")  # LED auf ROT für reserviert
+    elif TISCH_xxx_BELEGT is True:
+        my_rgb_led.set_color_by_name("GREEN")  # LED auf GRÜN für belegt
+    elif TISCH_xxx_SERVIVE_ERLEDIGT is True:
+        my_rgb_led.set_color_by_name("GREEN")  # LED auf GRÜN für Service erledigt
  
     time.sleep(0.05) # Kurze Pause in der Hauptschleife
 
