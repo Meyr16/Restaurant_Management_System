@@ -6,12 +6,21 @@ import time
 TISCH_xxx_SERVIVE_ERLEDIGT = False
 TISCH_xxx_RECHNUNG_ERLEDIGT = False
 TISCH_xxx_GESEHEN = False
-Tisch_xxx_RESERVIERT = False
+TISCH_xxx_RESERVIERT = False
 TISCH_xxx_BELEGT = False
+
+SERVICE_ERWÜNSCHT = False
+RECHNUNG_ERWÜNSCHT = False
 
 # --- Konfiguration der GPIO-Pins ---
 PIN_SERVICE_BUTTON = 14     # Pin 14 für "Service"
 PIN_RECHNUNG_BUTTON = 15    # Pin 15 für "Rechnung"
+
+# --- Pin-Initialisierung ---
+# EingangsPinns konfigurieren
+button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
+button_rechnung = Pin(PIN_RECHNUNG_BUTTON, Pin.IN, Pin.PULL_DOWN)
+
 
 # Entprellzeit in Sekunden (für beide Taster)
 DEBOUNCE_TIME = 0.2 
@@ -20,21 +29,12 @@ DEBOUNCE_TIME = 0.2
 service_erwuenscht_zaehler = 0
 rechnung_erwuenscht_zaehler = 0
 
-# --- Variablen ---
-
-SERVICE_ERWÜNSCHT = False
-RECHNUNG_ERWÜNSCHT = False
-# --- Pin-Initialisierung ---
-# EingangsPinns konfigurieren
-button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
-button_rechnung = Pin(PIN_RECHNUNG_BUTTON, Pin.IN, Pin.PULL_DOWN)
-
 
 print("Programm gestartet. Warte auf Tasterdruck...")
 print(f"Service Zähler: {service_erwuenscht_zaehler}, Rechnung Zähler: {rechnung_erwuenscht_zaehler}")
 
-while True:
-    class RGBLED:
+
+class RGBLED:
     # Vordefinierte Farben als statische Dictionary-Variable der Klasse
     # Die Werte sind Tupel (Rot, Grün, Blau) im Bereich 0-255 (für 8-Bit RGB)
         COLORS = {
@@ -100,15 +100,25 @@ while True:
             self.pwm_r.deinit()
             self.pwm_g.deinit()
             self.pwm_b.deinit()
-    
-    my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12, common_anode=True)
 
+my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12, common_anode=False)
+my_rgb_led.set_color_by_name("OFF")  
+
+print(f"DEBUG: SERVICE_ERWÜNSCHT: {SERVICE_ERWÜNSCHT}")
+print(f"DEBUG: RECHNUNG_ERWÜNSCHT: {RECHNUNG_ERWÜNSCHT}")
+print(f"DEBUG: Tisch_xxx_RESERVIERT: {TISCH_xxx_RESERVIERT}") 
+print(f"DEBUG: TISCH_xxx_BELEGT: {TISCH_xxx_BELEGT}")
+print(f"DEBUG: TISCH_xxx_SERVIVE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
+
+while True:
+   
     irgendein_taster_gedrueckt = False
 
     if button_service.value(): 
         service_erwuenscht_zaehler += 1
         print(f"Service erwünscht! Neuer Zählerstand: {service_erwuenscht_zaehler}")
         irgendein_taster_gedrueckt = True
+        SERVICE_ERWÜNSCHT = True
         
         start_time = time.time()
         while button_service.value() and (time.time() - start_time) < DEBOUNCE_TIME:
@@ -121,6 +131,7 @@ while True:
         rechnung_erwuenscht_zaehler += 1
         print(f"Rechnung erwünscht! Neuer Zählerstand: {rechnung_erwuenscht_zaehler}")
         irgendein_taster_gedrueckt = True
+        RECHNUNG_ERWÜNSCHT = True
         
         # Entprellen: Warte, bis der Taster losgelassen wird ODER die maximale Entprellzeit abgelaufen ist
         start_time = time.time()
@@ -131,18 +142,24 @@ while True:
             time.sleep(0.01)
 
    # LED-Farben setzen basierend auf den Zählerständen
-    if SERVICE_ERWÜNSCHT is True:
-        my_rgb_led.set_color_by_name("ORANGE")  # LED auf ORANGE für Service
-    elif RECHNUNG_ERWÜNSCHT is True:
-        my_rgb_led.set_color_by_name("ORANGE")   # LED auf ORANGE für Rechnung
-    elif Tisch_xxx_RESERVIERT is True:
-        my_rgb_led.set_color_by_name("RED")  # LED auf ROT für reserviert
-    elif TISCH_xxx_BELEGT is True:
-        my_rgb_led.set_color_by_name("GREEN")  # LED auf GRÜN für belegt
-    elif TISCH_xxx_SERVIVE_ERLEDIGT is True:
-        my_rgb_led.set_color_by_name("GREEN")  # LED auf GRÜN für Service erledigt
- 
+
+    if SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT:
+        my_rgb_led.set_color_by_name("ORANGE")  
+    elif TISCH_xxx_RESERVIERT:
+        my_rgb_led.set_color_by_name("RED")     
+    elif TISCH_xxx_BELEGT:
+        my_rgb_led.set_color_by_name("GREEN")  
+    elif TISCH_xxx_SERVIVE_ERLEDIGT: 
+        my_rgb_led.set_color_by_name("GREEN")   
+    else:
+        my_rgb_led.set_color_by_name("OFF") 
+    
+    if service_erwuenscht_zaehler == 0:
+        SERVICE_ERWÜNSCHT = False
+
+    if rechnung_erwuenscht_zaehler == 0:      
+        RECHNUNG_ERWÜNSCHT = False
+
     time.sleep(0.05) # Kurze Pause in der Hauptschleife
 
 
-    
