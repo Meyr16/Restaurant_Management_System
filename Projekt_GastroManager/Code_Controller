@@ -1,5 +1,7 @@
 from machine import Pin,PWM
 import time
+import sys
+import select
 
 # Übergabe Variablen für GUI
 
@@ -28,6 +30,9 @@ DEBOUNCE_TIME = 0.2
 # --- Variablen zur Zählung ---
 service_erwuenscht_zaehler = 0
 rechnung_erwuenscht_zaehler = 0
+
+last_service_press_time = 0
+last_rechnung_press_time = 0
 
 
 print("Programm gestartet. Warte auf Tasterdruck...")
@@ -104,42 +109,103 @@ class RGBLED:
 my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12, common_anode=False)
 my_rgb_led.set_color_by_name("OFF")  
 
-print(f"DEBUG: SERVICE_ERWÜNSCHT: {SERVICE_ERWÜNSCHT}")
-print(f"DEBUG: RECHNUNG_ERWÜNSCHT: {RECHNUNG_ERWÜNSCHT}")
-print(f"DEBUG: Tisch_xxx_RESERVIERT: {TISCH_xxx_RESERVIERT}") 
-print(f"DEBUG: TISCH_xxx_BELEGT: {TISCH_xxx_BELEGT}")
-print(f"DEBUG: TISCH_xxx_SERVIVE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
+class ConsoleInputHandler:
+    def __init__(self):
+        print("ConsoleInputHandler bereit für Befehle.")
+        print("Verfügbare Befehle:")
+        print("  SET RESERVIERT ON/OFF")
+        print("  SET BELEGT ON/OFF")
+        print("  SET SERVICE_DONE ON/OFF") # This command resets SERVICE_ERWÜNSCHT and its counter
+        print("  SET RECHNUNG_DONE ON/OFF")# This command resets RECHNUNG_ERWÜNSCHT and its counter
+
+        self.poller = select.poll()
+        self.poller.register(sys.stdin, select.POLLIN) # Register stdin for polling
+        
+
+    def check_for_input(self):
+        """Checks if there's input in the serial buffer and processes it."""
+        if self.poller.poll(0): # Poll with a timeout of 0ms (non-blocking)
+            try:
+                command_bytes = sys.stdin.readline().strip().encode('utf-8') # Read line from stdin, strip, then encode
+                if command_bytes: # Only process if actual bytes were read
+                    command = command_bytes.decode('utf-8').upper()
+                    print(f"Befehl von Kommandozeile empfangen: {command}")
+                    self._process_command(command)
+            except Exception as e:
+                print(f"Fehler beim Lesen von seriellen Daten: {e}")
+
+    def _process_command(self, command):
+        """Processes a received command."""
+        # Since these variables are defined outside the class, we need to use 'global'
+        # to modify them from within this method.
+        global TISCH_xxx_RESERVIERT, TISCH_xxx_BELEGT, \
+               TISCH_xxx_SERVIVE_ERLEDIGT, TISCH_xxx_RECHNUNG_ERLEDIGT, \
+               SERVICE_ERWÜNSCHT, rechnung_erwuenscht_zaehler, service_erwuenscht_zaehler
+
+        parts = command.split(' ')
+
+        if len(parts) == 3 and parts[0] == "SET":
+            variable_name = parts[1]
+            value_str = parts[2]
+            
+            new_value = True if value_str == "ON" else (False if value_str == "OFF" else None)
+
+            if new_value is not None:
+                if variable_name == "RESERVIERT":
+                    TISCH_xxx_RESERVIERT = new_value
+                    print(f"TISCH_xxx_RESERVIERT auf {new_value} gesetzt.")
+                elif variable_name == "BELEGT":
+                    TISCH_xxx_BELEGT = new_value
+                    print(f"TISCH_xxx_BELEGT auf {new_value} gesetzt.")
+            
+                elif variable_name == "SERVICE_DONE":
+                    TISCH_xxx_SERVIVE_ERLEDIGT = new_value
+                    if new_value: 
+                        SERVICE_ERWÜNSCHT = False # If service is done, it's no longer requested
+                        service_erwuenscht_zaehler = 0 # Reset counter
+                    print(f"TISCH_xxx_SERVIVE_ERLEDIGT auf {new_value} gesetzt. SERVICE_ERWÜNSCHT und Zähler zurückgesetzt.")
+                elif variable_name == "RECHNUNG_DONE":
+                    TISCH_xxx_RECHNUNG_ERLEDIGT = new_value
+                    if new_value:
+                        RECHNUNG_ERWÜNSCHT = False # If bill is done, it's no longer requested
+                        rechnung_erwuenscht_zaehler = 0 # Reset counter
+                    print(f"TISCH_xxx_RECHNUNG_ERLEDIGT auf {new_value} gesetzt. RECHNUNG_ERWÜNSCHT und Zähler zurückgesetzt.")
+                else:
+                    print(f"Unbekannte Variable: {variable_name}")
+            else:
+                print(f"Ungültiger Wert für {variable_name}: {value_str}. Erwarte ON oder OFF.")
+        else:
+            print(f"Unbekanntes Kommandoformat: {command}. Erwarte 'SET VAR ON/OFF'.")
+
+input_handler = ConsoleInputHandler()
+
+print(f"DEBUG Initial: SERVICE_ERWUENSCHT: {SERVICE_ERWÜNSCHT}, RECHNUNG_ERWUENSCHT: {RECHNUNG_ERWÜNSCHT}, TISCH_xxx_RESERVIERT: {TISCH_xxx_RESERVIERT}, TISCH_xxx_BELEGT: {TISCH_xxx_BELEGT}, TISCH_xxx_SERVIVE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
+print("Verfuegbare Befehle fuer Kommandozeile:")
+print("  SET RESERVIERT ON/OFF")
+print("  SET BELEGT ON/OFF")
+print("  SET SERVICE_DONE ON/OFF") # Setzt erledigt-Flag, setzt Service_req auf OFF
+print("  SET RECHNUNG_DONE ON/OFF")# Setzt erledigt-Flag, setzt Rechnung_req auf OFF
 
 while True:
    
-    irgendein_taster_gedrueckt = False
+    current_time = time.time()
+    input_handler.check_for_input()
 
-    if button_service.value(): 
-        service_erwuenscht_zaehler += 1
-        print(f"Service erwünscht! Neuer Zählerstand: {service_erwuenscht_zaehler}")
-        irgendein_taster_gedrueckt = True
-        SERVICE_ERWÜNSCHT = True
-        
-        start_time = time.time()
-        while button_service.value() and (time.time() - start_time) < DEBOUNCE_TIME:
-            time.sleep(0.01) 
-        
-        while button_service.value():
-            time.sleep(0.01)
+    if button_service.value() == 1: # Check if button is pressed (Pulled UP to 1)
+        if (current_time - last_service_press_time) > DEBOUNCE_TIME:
+            service_erwuenscht_zaehler += 1
+            SERVICE_ERWÜNSCHT = True
+            last_service_press_time = current_time # Update last press time
+            print(f"Service erwuenscht! Neuer Zaehlerstand: {service_erwuenscht_zaehler}")
+    
 
-    if button_rechnung.value(): 
-        rechnung_erwuenscht_zaehler += 1
-        print(f"Rechnung erwünscht! Neuer Zählerstand: {rechnung_erwuenscht_zaehler}")
-        irgendein_taster_gedrueckt = True
-        RECHNUNG_ERWÜNSCHT = True
-        
-        # Entprellen: Warte, bis der Taster losgelassen wird ODER die maximale Entprellzeit abgelaufen ist
-        start_time = time.time()
-        while button_rechnung.value() and (time.time() - start_time) < DEBOUNCE_TIME:
-            time.sleep(0.01)
-        
-        while button_rechnung.value():
-            time.sleep(0.01)
+    if button_rechnung.value() == 1: # Check if button is pressed (Pulled UP to 1)
+        if (current_time - last_rechnung_press_time) > DEBOUNCE_TIME:
+            rechnung_erwuenscht_zaehler += 1
+            RECHNUNG_ERWÜNSCHT = True
+            last_rechnung_press_time = current_time # Update last press time
+            print(f"Rechnung erwuenscht! Neuer Zaehlerstand: {rechnung_erwuenscht_zaehler}")
+
 
    # LED-Farben setzen basierend auf den Zählerständen
 
