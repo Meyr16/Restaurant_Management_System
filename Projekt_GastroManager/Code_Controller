@@ -1,133 +1,146 @@
-from machine import Pin,PWM
+from machine import Pin, PWM
 import time
 import sys
 import select
 
-# Übergabe Variablen für GUI
 
-TISCH_xxx_SERVIVE_ERLEDIGT = False
-TISCH_xxx_RECHNUNG_ERLEDIGT = False
-TISCH_xxx_GESEHEN = False
-TISCH_xxx_RESERVIERT = False
-TISCH_xxx_BELEGT = False
+# Variabeln GUI
+TISCH_xxx_SERVIVE_ERLEDIGT = False  # True, wenn Service-Anfrage von GUI als erledigt markiert
+TISCH_xxx_RECHNUNG_ERLEDIGT = False # True, wenn Rechnung-Anfrage von GUI als erledigt markiert
+TISCH_xxx_GESEHEN = False           # True, wenn eine Service/Rechnung-Anfrage vom Personal gesehen wurde
+TISCH_xxx_RESERVIERT = False        # True, wenn der Tisch reserviert ist
+TISCH_xxx_BELEGT = False            # True, wenn der Tisch belegt ist (Gäste sitzen am Tisch)
 
+# Für Taster
 SERVICE_ERWÜNSCHT = False
 RECHNUNG_ERWÜNSCHT = False
 
-# --- Konfiguration der GPIO-Pins ---
-PIN_SERVICE_BUTTON = 14     # Pin 14 für "Service"
-PIN_RECHNUNG_BUTTON = 15    # Pin 15 für "Rechnung"
+# GPIO
+PIN_SERVICE_BUTTON = 14  
+PIN_RECHNUNG_BUTTON = 15 
+PIN_LED_R = 2            
+PIN_LED_G = 3            
+PIN_LED_B = 4            
 
-# --- Pin-Initialisierung ---
-# EingangsPinns konfigurieren
+
 button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
 button_rechnung = Pin(PIN_RECHNUNG_BUTTON, Pin.IN, Pin.PULL_DOWN)
 
 
-# Entprellzeit in Sekunden (für beide Taster)
 DEBOUNCE_TIME = 0.2 
 
-# --- Variablen zur Zählung ---
+
 service_erwuenscht_zaehler = 0
 rechnung_erwuenscht_zaehler = 0
+MAX_DRINGLICHKEIT_ZAEHLER = 10 
+
 
 last_service_press_time = 0
 last_rechnung_press_time = 0
 
 
-print("Programm gestartet. Warte auf Tasterdruck...")
-print(f"Service Zähler: {service_erwuenscht_zaehler}, Rechnung Zähler: {rechnung_erwuenscht_zaehler}")
+blink_state = False              
+last_blink_toggle_time = 0      
+BLINK_INTERVAL = 0.5             
 
+print("Programm gestartet. Warte auf Tasterdruck...")
+print(f"Initialer Status: Service Zähler: {service_erwuenscht_zaehler}, Rechnung Zähler: {rechnung_erwuenscht_zaehler}")
 
 class RGBLED:
-    # Vordefinierte Farben als statische Dictionary-Variable der Klasse
-    # Die Werte sind Tupel (Rot, Grün, Blau) im Bereich 0-255 (für 8-Bit RGB)
-        COLORS = {
-            "OFF":      (0,   0,   0),
-            "RED":      (255, 0,   0),
-            "GREEN":    (0,   255, 0),
-            "BLUE":     (0,   0,   255),
-            "YELLOW":   (255, 255, 0),
-            "CYAN":     (0,   255, 255),
-            "MAGENTA":  (255, 0,   255),
-            "WHITE":    (255, 255, 255),
-            "ORANGE":   (255, 125, 0),
-            "PURPLE":   (128, 0,   128),
-            "LIGHT_BLUE": (128, 128, 255),
-        }
+    
+    COLORS = {
+        "OFF":      (0,   0,   0),
+        "RED":      (255, 0,   0),
+        "GREEN":    (0,   255, 0),
+        "BLUE":     (0,   0,   255),
+        "YELLOW":   (255, 255, 0),
+        "CYAN":     (0,   255, 255),
+        "MAGENTA":  (255, 0,   255),
+        "WHITE":    (255, 255, 255),
+        "PURPLE":   (128, 0,   128),
+        "LIGHT_BLUE": (128, 128, 255),
+    }
 
-        def __init__(self, pin_r, pin_g, pin_b, pwm_freq=5000, common_anode=False):
-            self.common_anode = common_anode  # True, wenn gemeinsame Anode verwendet wird
-            
-            self.pwm_freq = pwm_freq
+    def __init__(self, pin_r, pin_g, pin_b, pwm_freq=5000, common_anode=False):
+        # common_anode: True, wenn gemeinsame Anode verwendet wird (Masse zum Leuchten)
+        self.common_anode = common_anode
+        self.pwm_freq = pwm_freq
 
-            # Initialisiere PWM-Objekte für jeden Farbkanal
-            self.pwm_r = PWM(Pin(pin_r))
-            self.pwm_g = PWM(Pin(pin_g))
-            self.pwm_b = PWM(Pin(pin_b))
+        # Initialisiere PWM-Objekte für jeden Farbkanal.
+        self.pwm_r = PWM(Pin(pin_r))
+        self.pwm_g = PWM(Pin(pin_g))
+        self.pwm_b = PWM(Pin(pin_b))
 
-            # Setze die PWM-Frequenz für alle Kanäle
-            self.pwm_r.freq(self.pwm_freq)
-            self.pwm_g.freq(self.pwm_freq)
-            self.pwm_b.freq(self.pwm_freq)
+        # Setze die PWM-Frequenz für alle Kanäle.
+        self.pwm_r.freq(self.pwm_freq)
+        self.pwm_g.freq(self.pwm_freq)
+        self.pwm_b.freq(self.pwm_freq)
 
-            # Sicherstellen, dass alle LEDs am Anfang aus sind
-            self.set_color_rgb(0, 0, 0)
+        self.set_color_rgb(0, 0, 0)
 
-        def _map_value(self, value):
-            pwm_val = int(value * 65535 / 255)
-            return 65535 - pwm_val if self.common_anode else pwm_val
-            
-        def set_color_rgb(self, r, g, b):
+    def _map_value(self, value):
+        # Wandelt 8-Bit-RGB-Wert (0-255) in 16-Bit-PWM-Duty-Cycle (0-65535) um.
+        # Bei Common Anode muss der Wert invertiert werden (0 = volle Helligkeit, 65535 = aus).
+        pwm_val = int(value * 65535 / 255)
+        return 65535 - pwm_val if self.common_anode else pwm_val
+        
+    def set_color_rgb(self, r, g, b):
+        # Setzt die Farbe der LED mit direkten RGB-Werten.
+        self.pwm_r.duty_u16(self._map_value(r))
+        self.pwm_g.duty_u16(self._map_value(g))
+        self.pwm_b.duty_u16(self._map_value(b))
 
-            self.pwm_r.duty_u16(self._map_value(r))
-            self.pwm_g.duty_u16(self._map_value(g))
-            self.pwm_b.duty_u16(self._map_value(b))
+    def set_color_by_name(self, color_name):
+        # Setzt die Farbe der LED basierend auf einem vordefinierten Farbnamen.
+        color_name = color_name.upper()
+        if color_name in self.COLORS:
+            r, g, b = self.COLORS[color_name]
+            self.set_color_rgb(r, g, b)
+        else:
+            print(f"Fehler: Farbe '{color_name}' nicht definiert.")
 
-        def set_color_by_name(self, color_name):
+    def set_dringlichkeits_orange(self, dringlichkeit_factor):
+        # Stellt eine orange Farbe ein, die je nach Dringlichkeit (0.0 bis 1.0) röter wird.
+        # Der Grünanteil wird von 125 (Basis Orange) auf 0 (reines Rot) reduziert.
+        green_component = int(125 * (1.0 - dringlichkeit_factor))
+        self.set_color_rgb(255, green_component, 0)
 
-            color_name = color_name.upper() # Namen in Großbuchstaben umwandeln
-            if color_name in self.COLORS:
-                r, g, b = self.COLORS[color_name]
-                self.set_color_rgb(r, g, b)
-            else:
-                print(f"Fehler: Farbe '{color_name}' nicht definiert.")
-                print(f"Verfügbare Farben: {', '.join(self.COLORS.keys())}")
+    def turn_off(self):
+        # Schaltet die LED aus.
+        self.set_color_rgb(0, 0, 0)
 
-        def turn_off(self):
-            self.set_color_rgb(0, 0, 0) # Entspricht OFF
+    def __del__(self):
+        # Deinitialisiert die PWM-Pins, wenn das Objekt gelöscht wird, um Ressourcen freizugeben.
+        self.pwm_r.deinit()
+        self.pwm_g.deinit()
+        self.pwm_b.deinit()
 
-        def __del__(self):
-            """
-            Wird aufgerufen, wenn das Objekt gelöscht wird.
-            Deinitialisiert die PWM-Pins, um Ressourcen freizugeben.
-            """
-            self.pwm_r.deinit()
-            self.pwm_g.deinit()
-            self.pwm_b.deinit()
 
-my_rgb_led = RGBLED(pin_r=2, pin_g=3, pin_b=4, common_anode=False)
-my_rgb_led.set_color_by_name("OFF")  
+my_rgb_led = RGBLED(pin_r=PIN_LED_R, pin_g=PIN_LED_G, pin_b=PIN_LED_B, common_anode=False)
+my_rgb_led.set_color_by_name("OFF") 
 
 class ConsoleInputHandler:
     def __init__(self):
         print("ConsoleInputHandler bereit für Befehle.")
         print("Verfügbare Befehle:")
-        print("  SET RESERVIERT ON/OFF")
-        print("  SET BELEGT ON/OFF")
-        print("  SET SERVICE_DONE ON/OFF") # This command resets SERVICE_ERWÜNSCHT and its counter
-        print("  SET RECHNUNG_DONE ON/OFF")# This command resets RECHNUNG_ERWÜNSCHT and its counter
+        print("   SET RESERVIERT ON/OFF")
+        print("   SET BELEGT ON/OFF")
+        print("   SET SERVICE_DONE ON/OFF") 
+        print("   SET RECHNUNG_DONE ON/OFF")
+        print("   SET GESEHEN ON/OFF")
+        print("   SET SERVICE_ZAEHLER <ZAHL>")
+        print("   SET RECHNUNG_ZAEHLER <ZAHL>")
 
+        # Initialisiere Poller, um nicht-blockierend serielle Eingaben zu prüfen.
         self.poller = select.poll()
-        self.poller.register(sys.stdin, select.POLLIN) # Register stdin for polling
+        self.poller.register(sys.stdin, select.POLLIN)
         
-
     def check_for_input(self):
-        """Checks if there's input in the serial buffer and processes it."""
-        if self.poller.poll(0): # Poll with a timeout of 0ms (non-blocking)
+        # Prüft, ob serielle Eingaben vorliegen und verarbeitet diese.
+        if self.poller.poll(0): # Poll mit 0ms Timeout (nicht-blockierend)
             try:
-                command_bytes = sys.stdin.readline().strip().encode('utf-8') # Read line from stdin, strip, then encode
-                if command_bytes: # Only process if actual bytes were read
+                command_bytes = sys.stdin.readline().strip().encode('utf-8')
+                if command_bytes:
                     command = command_bytes.decode('utf-8').upper()
                     print(f"Befehl von Kommandozeile empfangen: {command}")
                     self._process_command(command)
@@ -135,12 +148,12 @@ class ConsoleInputHandler:
                 print(f"Fehler beim Lesen von seriellen Daten: {e}")
 
     def _process_command(self, command):
-        """Processes a received command."""
-        # Since these variables are defined outside the class, we need to use 'global'
-        # to modify them from within this method.
+        # Verarbeitet einen empfangenen Befehl und aktualisiert die globalen Zustandsvariablen.
         global TISCH_xxx_RESERVIERT, TISCH_xxx_BELEGT, \
                TISCH_xxx_SERVIVE_ERLEDIGT, TISCH_xxx_RECHNUNG_ERLEDIGT, \
-               SERVICE_ERWÜNSCHT, rechnung_erwuenscht_zaehler, service_erwuenscht_zaehler
+               SERVICE_ERWÜNSCHT, RECHNUNG_ERWÜNSCHT, \
+               rechnung_erwuenscht_zaehler, service_erwuenscht_zaehler, \
+               TISCH_xxx_GESEHEN
 
         parts = command.split(' ')
 
@@ -148,6 +161,7 @@ class ConsoleInputHandler:
             variable_name = parts[1]
             value_str = parts[2]
             
+            # Konvertiere "ON" / "OFF" in True / False
             new_value = True if value_str == "ON" else (False if value_str == "OFF" else None)
 
             if new_value is not None:
@@ -157,86 +171,133 @@ class ConsoleInputHandler:
                 elif variable_name == "BELEGT":
                     TISCH_xxx_BELEGT = new_value
                     print(f"TISCH_xxx_BELEGT auf {new_value} gesetzt.")
-            
+                
                 elif variable_name == "SERVICE_DONE":
                     TISCH_xxx_SERVIVE_ERLEDIGT = new_value
                     if new_value: 
-                        SERVICE_ERWÜNSCHT = False # If service is done, it's no longer requested
-                        service_erwuenscht_zaehler = 0 # Reset counter
+                        SERVICE_ERWÜNSCHT = False # Setze Service-Wunsch zurück
+                        service_erwuenscht_zaehler = 0 # Setze Zähler zurück
+                        TISCH_xxx_GESEHEN = False # Setze 'GESEHEN' zurück, da Service erledigt
                     print(f"TISCH_xxx_SERVIVE_ERLEDIGT auf {new_value} gesetzt. SERVICE_ERWÜNSCHT und Zähler zurückgesetzt.")
                 elif variable_name == "RECHNUNG_DONE":
                     TISCH_xxx_RECHNUNG_ERLEDIGT = new_value
                     if new_value:
-                        RECHNUNG_ERWÜNSCHT = False # If bill is done, it's no longer requested
-                        rechnung_erwuenscht_zaehler = 0 # Reset counter
+                        RECHNUNG_ERWÜNSCHT = False # Setze Rechnung-Wunsch zurück
+                        rechnung_erwuenscht_zaehler = 0 # Setze Zähler zurück
+                        TISCH_xxx_GESEHEN = False # Setze 'GESEHEN' zurück, da Rechnung erledigt
                     print(f"TISCH_xxx_RECHNUNG_ERLEDIGT auf {new_value} gesetzt. RECHNUNG_ERWÜNSCHT und Zähler zurückgesetzt.")
+                elif variable_name == "GESEHEN":
+                    TISCH_xxx_GESEHEN = new_value
+                    print(f"TISCH_xxx_GESEHEN auf {new_value} gesetzt.")
                 else:
                     print(f"Unbekannte Variable: {variable_name}")
-            else:
-                print(f"Ungültiger Wert für {variable_name}: {value_str}. Erwarte ON oder OFF.")
+            else: # Hier werden numerische Werte für Zähler behandelt
+                try:
+                    num_value = int(value_str)
+                    if variable_name == "SERVICE_ZAEHLER":
+                        service_erwuenscht_zaehler = max(0, num_value) # Zähler darf nicht negativ sein
+                        SERVICE_ERWÜNSCHT = True if service_erwuenscht_zaehler > 0 else False
+                        print(f"Service Zähler auf {service_erwuenscht_zaehler} gesetzt.")
+                    elif variable_name == "RECHNUNG_ZAEHLER":
+                        rechnung_erwuenscht_zaehler = max(0, num_value) # Zähler darf nicht negativ sein
+                        RECHNUNG_ERWÜNSCHT = True if rechnung_erwuenscht_zaehler > 0 else False
+                        print(f"Rechnung Zähler auf {rechnung_erwuenscht_zaehler} gesetzt.")
+                    else:
+                        print(f"Ungültiger Wert für {variable_name}: {value_str}.")
+                except ValueError:
+                    print(f"Ungültiger Wert für {variable_name}: {value_str}.")
         else:
-            print(f"Unbekanntes Kommandoformat: {command}. Erwarte 'SET VAR ON/OFF'.")
+            print(f"Unbekanntes Kommandoformat: {command}.")
+
 
 input_handler = ConsoleInputHandler()
 
-print(f"DEBUG Initial: SERVICE_ERWUENSCHT: {SERVICE_ERWÜNSCHT}, RECHNUNG_ERWUENSCHT: {RECHNUNG_ERWÜNSCHT}, TISCH_xxx_RESERVIERT: {TISCH_xxx_RESERVIERT}, TISCH_xxx_BELEGT: {TISCH_xxx_BELEGT}, TISCH_xxx_SERVIVE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
+# Debug-Ausgabe des Initialzustands.
+print(f"DEBUG Initial: SERVICE_ERWÜNSCHT: {SERVICE_ERWÜNSCHT}, RECHNUNG_ERWÜNSCHT: {RECHNUNG_ERWÜNSCHT}, TISCH_xxx_RESERVIERT: {TISCH_xxx_RESERVIERT}, TISCH_xxx_BELEGT: {TISCH_xxx_BELEGT}, TISCH_xxx_SERVIVE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}, TISCH_xxx_GESEHEN: {TISCH_xxx_GESEHEN}")
 print("Verfuegbare Befehle fuer Kommandozeile:")
-print("  SET RESERVIERT ON/OFF")
-print("  SET BELEGT ON/OFF")
-print("  SET SERVICE_DONE ON/OFF") # Setzt erledigt-Flag, setzt Service_req auf OFF
-print("  SET RECHNUNG_DONE ON/OFF")# Setzt erledigt-Flag, setzt Rechnung_req auf OFF
+print("   SET RESERVIERT ON/OFF")
+print("   SET BELEGT ON/OFF")
+print("   SET SERVICE_DONE ON/OFF") 
+print("   SET RECHNUNG_DONE ON/OFF")
+print("   SET GESEHEN ON/OFF") 
+print("   SET SERVICE_ZAEHLER <ZAHL>")
+print("   SET RECHNUNG_ZAEHLER <ZAHL>")
+
 
 while True:
-   
     current_time = time.time()
-    input_handler.check_for_input()
+    input_handler.check_for_input() 
 
-    if button_service.value() == 1: # Check if button is pressed (Pulled UP to 1)
-        if (current_time - last_service_press_time) > DEBOUNCE_TIME:
-            service_erwuenscht_zaehler += 1
-            SERVICE_ERWÜNSCHT = True
-            last_service_press_time = current_time # Update last press time
+    # Service-Taster Logik
+    if button_service.value() == 1:
+        if (current_time - last_service_press_time) > DEBOUNCE_TIME: 
+            service_erwuenscht_zaehler += 1 
+            SERVICE_ERWÜNSCHT = True        
+            TISCH_xxx_GESEHEN = False      
+            last_service_press_time = current_time 
             print(f"Service erwuenscht! Neuer Zaehlerstand: {service_erwuenscht_zaehler}")
     
-
-    if button_rechnung.value() == 1: # Check if button is pressed (Pulled UP to 1)
-        if (current_time - last_rechnung_press_time) > DEBOUNCE_TIME:
-            rechnung_erwuenscht_zaehler += 1
-            RECHNUNG_ERWÜNSCHT = True
-            last_rechnung_press_time = current_time # Update last press time
+    # Rechnungs-Taster Logik
+    if button_rechnung.value() == 1: 
+        if (current_time - last_rechnung_press_time) > DEBOUNCE_TIME: 
+            rechnung_erwuenscht_zaehler += 1 
+            RECHNUNG_ERWÜNSCHT = True       
+            TISCH_xxx_GESEHEN = False      
+            last_rechnung_press_time = current_time 
             print(f"Rechnung erwuenscht! Neuer Zaehlerstand: {rechnung_erwuenscht_zaehler}")
 
-    
+
     if service_erwuenscht_zaehler == 0:
         SERVICE_ERWÜNSCHT = False
     if rechnung_erwuenscht_zaehler == 0:
         RECHNUNG_ERWÜNSCHT = False
     
-    if SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT:
-        my_rgb_led.set_color_by_name("ORANGE") 
-        TISCH_xxx_SERVIVE_ERLEDIGT = False
-        TISCH_xxx_RECHNUNG_ERLEDIGT = False
-        #print("LED: ORANGE (Service/Rechnung erwünscht)")
+    # Dringlichkeitsberechnung 
+    dringlichkeit_zaehler = max(service_erwuenscht_zaehler, rechnung_erwuenscht_zaehler)
+    dringlichkeit_factor = min(1.0, dringlichkeit_zaehler / MAX_DRINGLICHKEIT_ZAEHLER)
+    
+    # LED-Steuerung basierend auf der Priorität der Zustände:
 
+   
+    if (SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT) and TISCH_xxx_GESEHEN:
+        if (current_time - last_blink_toggle_time) > BLINK_INTERVAL:
+            blink_state = not blink_state # Blinkzustand wechseln (an/aus)
+            last_blink_toggle_time = current_time
+        
+        if blink_state:
+            my_rgb_led.set_dringlichkeits_orange(dringlichkeit_factor)
+        else:
+            my_rgb_led.turn_off()
+
+    
+    elif SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT:
+        my_rgb_led.set_dringlichkeits_orange(dringlichkeit_factor)
+       
+        TISCH_xxx_SERVIVE_ERLEDIGT = False 
+        TISCH_xxx_RECHNUNG_ERLEDIGT = False
+
+    
     elif TISCH_xxx_RESERVIERT and not TISCH_xxx_BELEGT:
         my_rgb_led.set_color_by_name("RED")
+       
+        TISCH_xxx_GESEHEN = False
         TISCH_xxx_SERVIVE_ERLEDIGT = False
         TISCH_xxx_RECHNUNG_ERLEDIGT = False
-        #print("LED: RED (Reserviert)")
 
+   
     elif TISCH_xxx_BELEGT:
         my_rgb_led.set_color_by_name("GREEN")
+        
+        TISCH_xxx_GESEHEN = False
         TISCH_xxx_SERVIVE_ERLEDIGT = False
         TISCH_xxx_RECHNUNG_ERLEDIGT = False
-        #print("LED: GREEN (Belegt)")
 
+    
     else:
         my_rgb_led.set_color_by_name("BLUE")
+        
+        TISCH_xxx_GESEHEN = False
         TISCH_xxx_SERVIVE_ERLEDIGT = False
         TISCH_xxx_RECHNUNG_ERLEDIGT = False
-        #print("LED: BLUE (Frei)")
-   
-
-    time.sleep(0.05) # Kurze Pause in der Hauptschleife
-
-
+    
+    time.sleep(0.05) 
