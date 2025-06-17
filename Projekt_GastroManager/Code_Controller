@@ -51,7 +51,7 @@ class RGBLED:
             "CYAN":     (0,   255, 255),
             "MAGENTA":  (255, 0,   255),
             "WHITE":    (255, 255, 255),
-            "ORANGE":   (255, 128, 0),
+            "ORANGE":   (255, 125, 0),
             "PURPLE":   (128, 0,   128),
             "LIGHT_BLUE": (128, 128, 255),
         }
@@ -106,7 +106,7 @@ class RGBLED:
             self.pwm_g.deinit()
             self.pwm_b.deinit()
 
-my_rgb_led = RGBLED(pin_r=11, pin_g=13, pin_b=12, common_anode=False)
+my_rgb_led = RGBLED(pin_r=2, pin_g=3, pin_b=4, common_anode=False)
 my_rgb_led.set_color_by_name("OFF")  
 
 class ConsoleInputHandler:
@@ -206,25 +206,36 @@ while True:
             last_rechnung_press_time = current_time # Update last press time
             print(f"Rechnung erwuenscht! Neuer Zaehlerstand: {rechnung_erwuenscht_zaehler}")
 
-
-   # LED-Farben setzen basierend auf den Zählerständen
-
-    if SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT:
-        my_rgb_led.set_color_by_name("ORANGE")  
-    elif TISCH_xxx_RESERVIERT:
-        my_rgb_led.set_color_by_name("RED")     
-    elif TISCH_xxx_BELEGT:
-        my_rgb_led.set_color_by_name("GREEN")  
-    elif TISCH_xxx_SERVIVE_ERLEDIGT: 
-        my_rgb_led.set_color_by_name("GREEN")   
-    else:
-        my_rgb_led.set_color_by_name("OFF") 
     
     if service_erwuenscht_zaehler == 0:
         SERVICE_ERWÜNSCHT = False
-
-    if rechnung_erwuenscht_zaehler == 0:      
+    if rechnung_erwuenscht_zaehler == 0:
         RECHNUNG_ERWÜNSCHT = False
+    
+    if SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT:
+        my_rgb_led.set_color_by_name("ORANGE") 
+        TISCH_xxx_SERVIVE_ERLEDIGT = False
+        TISCH_xxx_RECHNUNG_ERLEDIGT = False
+        #print("LED: ORANGE (Service/Rechnung erwünscht)")
+
+    elif TISCH_xxx_RESERVIERT and not TISCH_xxx_BELEGT:
+        my_rgb_led.set_color_by_name("RED")
+        TISCH_xxx_SERVIVE_ERLEDIGT = False
+        TISCH_xxx_RECHNUNG_ERLEDIGT = False
+        #print("LED: RED (Reserviert)")
+
+    elif TISCH_xxx_BELEGT:
+        my_rgb_led.set_color_by_name("GREEN")
+        TISCH_xxx_SERVIVE_ERLEDIGT = False
+        TISCH_xxx_RECHNUNG_ERLEDIGT = False
+        #print("LED: GREEN (Belegt)")
+
+    else:
+        my_rgb_led.set_color_by_name("BLUE")
+        TISCH_xxx_SERVIVE_ERLEDIGT = False
+        TISCH_xxx_RECHNUNG_ERLEDIGT = False
+        #print("LED: BLUE (Frei)")
+   
 
     time.sleep(0.05) # Kurze Pause in der Hauptschleife
 
