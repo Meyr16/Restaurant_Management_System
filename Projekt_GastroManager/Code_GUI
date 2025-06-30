@@ -1,71 +1,279 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
+from tkinter import ttk
+from datetime import datetime, timedelta
 
-class RestaurantApp:
+#Gerichte und Getränke
+DISHES = [
+    ("Pizza", 8.5),
+    ("Pasta", 7.0),
+    ("Salat", 5.5),
+    ("Schnitzel", 9.0)
+]
+DRINKS = [
+    ("Wasser", 2.0),
+    ("Cola", 2.5),
+    ("Bier", 3.0),
+    ("Wein", 4.0)
+]
+
+#Hilfsfunktionen
+def get_next_7_days():
+    today = datetime.now().date()
+    return [(today + timedelta(days=i)).strftime("%d.%m.%Y") for i in range(7)]
+
+def get_time_slots():
+    return [f"{h}:00 - {h+2}:00" for h in range(16, 22, 2)]
+
+#Klassen
+class Table:
+    def __init__(self, number, seats):
+        self.number = number
+        self.seats = seats
+        self.orders = {"dishes": [0]*len(DISHES), "drinks": [0]*len(DRINKS)}
+        self.reserved = False
+        self.reservation_info = None
+        self.service_requested = False
+        self.bill_requested = False
+
+    def reset_orders(self):
+        self.orders = {"dishes": [0]*len(DISHES), "drinks": [0]*len(DRINKS)}
+
+    def total(self):
+        total = 0
+        for i, qty in enumerate(self.orders["dishes"]):
+            total += qty * DISHES[i][1]
+        for i, qty in enumerate(self.orders["drinks"]):
+            total += qty * DRINKS[i][1]
+        return total
+
+class Reservation:
+    def __init__(self, name, table_number, date, time_slot):
+        self.name = name
+        self.table_number = table_number
+        self.date = date
+        self.time_slot = time_slot
+
+    def __lt__(self, other):
+        dt1 = datetime.strptime(f"{self.date} {self.time_slot[:2]}", "%d.%m.%Y %H")
+        dt2 = datetime.strptime(f"{other.date} {other.time_slot[:2]}", "%d.%m.%Y %H")
+        return dt1 < dt2
+
+class ReservationManager:
+    def __init__(self):
+        self.reservations = []
+
+    def add_reservation(self, reservation):
+        self.reservations.append(reservation)
+        self.reservations.sort()
+
+    def remove_reservation(self, table_number, date, time_slot):
+        self.reservations = [
+            r for r in self.reservations
+            if not (r.table_number == table_number and r.date == date and r.time_slot == time_slot)
+        ]
+
+    def is_reserved(self, table_number, date, time_slot):
+        return any(
+            r.table_number == table_number and r.date == date and r.time_slot == time_slot
+            for r in self.reservations
+        )
+
+    def get_reservations(self):
+        return sorted(self.reservations)
+
+class RestaurantGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Restaurant Management System")
-        self.root.geometry("600x500")
+        self.root.title("Restaurant Verwaltung")
+        self.tables = [
+            Table(1, 2),
+            Table(2, 4),
+            Table(3, 6),
+            Table(4, 8)
+        ]
+        self.res_manager = ReservationManager()
+        self.selected_table = None
 
-        # Titel
-        title = tk.Label(root, text="Restaurant Management System", font=("Arial", 20, "bold"))
-        title.pack(pady=10)
+        self.create_widgets()
+        self.update_table_status()
 
-        # Frames
-        input_frame = tk.Frame(root)
-        input_frame.pack(pady=10)
+    def create_widgets(self):
+        #Tische Frame
+        self.tables_frame = tk.Frame(self.root)
+        self.tables_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
 
-        # Labels & Eingaben
-        tk.Label(input_frame, text="Burger (5€):", font=("Arial", 12)).grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        tk.Label(input_frame, text="Pommes (3€):", font=("Arial", 12)).grid(row=1, column=0, sticky="w", padx=10, pady=5)
-        tk.Label(input_frame, text="Cola (2€):", font=("Arial", 12)).grid(row=2, column=0, sticky="w", padx=10, pady=5)
+        self.table_buttons = []
+        for i, table in enumerate(self.tables):
+            btn = tk.Button(self.tables_frame, text=f"Tisch {table.number}\n({table.seats} Plätze)",
+                            width=15, height=4, command=lambda t=table: self.open_order_window(t))
+            btn.grid(row=i, column=0, pady=5)
+            self.table_buttons.append(btn)
 
-        self.burger_qty = tk.IntVar()
-        self.fries_qty = tk.IntVar()
-        self.cola_qty = tk.IntVar()
+        #Bedienung/Rechnung Feld Tisch 1
+        self.status_frame = tk.LabelFrame(self.root, text="Tisch1 Status", padx=10, pady=10)
+        self.status_frame.grid(row=0, column=1, padx=10, pady=10, sticky="n")
+        self.service_var = tk.BooleanVar()
+        self.bill_var = tk.BooleanVar()
+        tk.Checkbutton(self.status_frame, text="Bedienung erwünscht", variable=self.service_var,
+                       command=self.trigger_service).pack(anchor="w")
+        tk.Checkbutton(self.status_frame, text="Rechnung erwünscht", variable=self.bill_var,
+                       command=self.trigger_bill).pack(anchor="w")
 
-        tk.Entry(input_frame, textvariable=self.burger_qty, width=10).grid(row=0, column=1)
-        tk.Entry(input_frame, textvariable=self.fries_qty, width=10).grid(row=1, column=1)
-        tk.Entry(input_frame, textvariable=self.cola_qty, width=10).grid(row=2, column=1)
+        #Reservierung Frame
+        self.res_frame = tk.LabelFrame(self.root, text="Reservierung", padx=10, pady=10)
+        self.res_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
-        # Buttons
-        button_frame = tk.Frame(root)
-        button_frame.pack(pady=20)
+        tk.Label(self.res_frame, text="Name:").grid(row=0, column=0)
+        self.name_entry = tk.Entry(self.res_frame)
+        self.name_entry.grid(row=0, column=1)
 
-        tk.Button(button_frame, text="Rechnung erstellen", command=self.calculate_total, width=20).grid(row=0, column=0, padx=10)
-        tk.Button(button_frame, text="Zurücksetzen", command=self.reset_fields, width=20).grid(row=0, column=1, padx=10)
+        tk.Label(self.res_frame, text="Tisch:").grid(row=0, column=2)
+        self.table_choice = ttk.Combobox(self.res_frame, values=[1,2,3,4], width=3)
+        self.table_choice.grid(row=0, column=3)
 
-        # Ausgabe
-        self.result_text = tk.Text(root, height=10, width=60)
-        self.result_text.pack(pady=10)
+        tk.Label(self.res_frame, text="Tag:").grid(row=1, column=0)
+        self.day_choice = ttk.Combobox(self.res_frame, values=get_next_7_days(), width=12)
+        self.day_choice.grid(row=1, column=1)
 
-    def calculate_total(self):
-        burger = self.burger_qty.get()
-        fries = self.fries_qty.get()
-        cola = self.cola_qty.get()
+        tk.Label(self.res_frame, text="Zeit:").grid(row=1, column=2)
+        self.time_choice = ttk.Combobox(self.res_frame, values=get_time_slots(), width=12)
+        self.time_choice.grid(row=1, column=3)
 
-        total = burger * 5 + fries * 3 + cola * 2
+        tk.Button(self.res_frame, text="Reservieren", command=self.reserve_table).grid(row=2, column=0, pady=5)
+        tk.Button(self.res_frame, text="Stornieren", command=self.cancel_reservation).grid(row=2, column=1, pady=5)
 
-        receipt = f"""
-        === Quittung ===
-        Burger: {burger} x 5€ = {burger * 5}€
-        Pommes: {fries} x 3€ = {fries * 3}€
-        Cola:   {cola} x 2€ = {cola * 2}€
-        ---------------------------
-        Gesamtbetrag: {total}€
-        """
-        self.result_text.delete(1.0, tk.END)
-        self.result_text.insert(tk.END, receipt)
+        #Reservierungsübersicht
+        self.res_listbox = tk.Listbox(self.res_frame, width=60)
+        self.res_listbox.grid(row=3, column=0, columnspan=4, pady=5)
+        self.update_reservation_list()
 
-    def reset_fields(self):
-        self.burger_qty.set(0)
-        self.fries_qty.set(0)
-        self.cola_qty.set(0)
-        self.result_text.delete(1.0, tk.END)
+    def update_table_status(self):
+        for i, table in enumerate(self.tables):
+            btn = self.table_buttons[i]
+            reserved = False
+            #Prüfe ob Tisch reserviert ist
+            now = datetime.now()
+            today = now.strftime("%d.%m.%Y")
+            current_hour = now.hour
+            for slot in get_time_slots():
+                slot_hour = int(slot[:2])
+                if slot_hour <= current_hour < slot_hour+2:
+                    if self.res_manager.is_reserved(table.number, today, slot):
+                        reserved = True
+                        break
+            if reserved:
+                btn.config(bg="red", text=f"Tisch {table.number}\nbelegt")
+            else:
+                btn.config(bg="lightgreen", text=f"Tisch {table.number}\n({table.seats} Plätze)")
 
-# Hauptfenster starten
+    def open_order_window(self, table):
+        if self.is_table_reserved_now(table.number):
+            messagebox.showinfo("Tisch belegt", "Dieser Tisch ist aktuell reserviert!")
+            return
+        self.selected_table = table
+        win = tk.Toplevel(self.root)
+        win.title(f"Bestellung für Tisch {table.number}")
+
+        tk.Label(win, text="Gerichte:").grid(row=0, column=0, sticky="w")
+        dish_vars = []
+        for i, (dish, price) in enumerate(DISHES):
+            tk.Label(win, text=f"{dish} ({price:.2f}€):").grid(row=i+1, column=0, sticky="w")
+            var = tk.IntVar(value=table.orders["dishes"][i])
+            tk.Entry(win, textvariable=var, width=3).grid(row=i+1, column=1)
+            dish_vars.append(var)
+
+        tk.Label(win, text="Getränke:").grid(row=0, column=2, sticky="w")
+        drink_vars = []
+        for i, (drink, price) in enumerate(DRINKS):
+            tk.Label(win, text=f"{drink} ({price:.2f}€):").grid(row=i+1, column=2, sticky="w")
+            var = tk.IntVar(value=table.orders["drinks"][i])
+            tk.Entry(win, textvariable=var, width=3).grid(row=i+1, column=3)
+            drink_vars.append(var)
+
+        def save_order():
+            table.orders["dishes"] = [v.get() for v in dish_vars]
+            table.orders["drinks"] = [v.get() for v in drink_vars]
+            messagebox.showinfo("Gespeichert", "Bestellung gespeichert.")
+
+        def show_bill():
+            save_order()
+            total = table.total()
+            messagebox.showinfo("Rechnung", f"Gesamtsumme: {total:.2f} €")
+            table.reset_orders()
+            win.destroy()
+
+        tk.Button(win, text="Speichern", command=save_order).grid(row=6, column=0, pady=10)
+        tk.Button(win, text="Rechnung", command=show_bill).grid(row=6, column=1, pady=10)
+
+    def reserve_table(self):
+        name = self.name_entry.get().strip()
+        try:
+            table_number = int(self.table_choice.get())
+        except:
+            messagebox.showerror("Fehler", "Bitte Tisch wählen.")
+            return
+        date = self.day_choice.get()
+        time_slot = self.time_choice.get()
+        if not (name and date and time_slot):
+            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen.")
+            return
+        if self.res_manager.is_reserved(table_number, date, time_slot):
+            messagebox.showerror("Fehler", "Tisch ist bereits reserviert.")
+            return
+        res = Reservation(name, table_number, date, time_slot)
+        self.res_manager.add_reservation(res)
+        self.update_reservation_list()
+        self.update_table_status()
+        messagebox.showinfo("Reserviert", "Reservierung erfolgreich.")
+
+    def cancel_reservation(self):
+        try:
+            table_number = int(self.table_choice.get())
+        except:
+            messagebox.showerror("Fehler", "Bitte Tisch wählen.")
+            return
+        date = self.day_choice.get()
+        time_slot = self.time_choice.get()
+        self.res_manager.remove_reservation(table_number, date, time_slot)
+        self.update_reservation_list()
+        self.update_table_status()
+        messagebox.showinfo("Storniert", "Reservierung storniert.")
+
+    def update_reservation_list(self):
+        self.res_listbox.delete(0, tk.END)
+        for res in self.res_manager.get_reservations():
+            self.res_listbox.insert(tk.END, f"{res.date} {res.time_slot} - Tisch {res.table_number} ({res.name})")
+
+    def is_table_reserved_now(self, table_number):
+        now = datetime.now()
+        today = now.strftime("%d.%m.%Y")
+        current_hour = now.hour
+        for slot in get_time_slots():
+            slot_hour = int(slot[:2])
+            if slot_hour <= current_hour < slot_hour+2:
+                if self.res_manager.is_reserved(table_number, today, slot):
+                    return True
+        return False
+
+    def trigger_service(self):
+        if self.service_var.get():
+            self.popup_status("Bedienung erwünscht", "Bedienung für Tisch 1 gewünscht.", self.service_var)
+
+    def trigger_bill(self):
+        if self.bill_var.get():
+            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_var)
+
+    def popup_status(self, title, msg, var):
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        tk.Label(win, text=msg).pack(padx=20, pady=10)
+        def confirm():
+            var.set(False)
+            win.destroy()
+        tk.Button(win, text="Bestätigen", command=confirm).pack(pady=10)
+
 if __name__ == "__main__":
     root = tk.Tk()
-    app = RestaurantApp(root)
+    app = RestaurantGUI(root)
     root.mainloop()
-
