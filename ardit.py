@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
-import dsa as ds  # Stelle sicher, dass ds_algos.py neben dieser Datei liegt
+import ds  
 
 # ========================================
 # Daten für Gerichte und Getränke
