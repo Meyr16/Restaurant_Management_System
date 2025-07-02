@@ -16,11 +16,11 @@ SERVICE_ERWÜNSCHT = False
 RECHNUNG_ERWÜNSCHT = False
 
 # GPIO
-PIN_SERVICE_BUTTON = 14  
-PIN_RECHNUNG_BUTTON = 15 
-PIN_LED_R = 2            
-PIN_LED_G = 3            
-PIN_LED_B = 4            
+PIN_SERVICE_BUTTON = 19  
+PIN_RECHNUNG_BUTTON = 16
+PIN_LED_R = 11           
+PIN_LED_G = 3      
+PIN_LED_B = 7         
 
 
 button_service = Pin(PIN_SERVICE_BUTTON, Pin.IN, Pin.PULL_DOWN)
@@ -257,7 +257,7 @@ while True:
     dringlichkeit_factor = min(1.0, dringlichkeit_zaehler / MAX_DRINGLICHKEIT_ZAEHLER)
     
     # LED-Steuerung basierend auf der Priorität der Zustände:
-
+    
    
     if (SERVICE_ERWÜNSCHT or RECHNUNG_ERWÜNSCHT) and TISCH_xxx_GESEHEN:
         if (current_time - last_blink_toggle_time) > BLINK_INTERVAL:
@@ -300,4 +300,5 @@ while True:
         TISCH_xxx_SERVIVE_ERLEDIGT = False
         TISCH_xxx_RECHNUNG_ERLEDIGT = False
     
+ 
     time.sleep(0.05) 
