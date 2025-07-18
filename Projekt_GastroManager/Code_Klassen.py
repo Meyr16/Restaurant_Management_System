@@ -83,21 +83,7 @@ class ReservationManager:
 SERVICE_GRAPH = ds.Graph()
 SERVICE_GRAPH.add_edge(1, 2, 1.2)
 SERVICE_GRAPH.add_edge(2, 3, 1.5)
-SERVICE_GRAPH.add_edge(3, 4, 2.0)
-
-# ========================================
-# Hauptklasse mit GUI
-# ========================================
-class RestaurantGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Restaurant Verwaltung")
-        self.tables = [Table(i, seats) for i, seats in enumerate([2, 4, 6, 8], 1)]
-        self.res_manager = ReservationManager()
-        self.selected_table = None
-
-        self.build_ui()
-        self.update_table_status()
+SERVICE_GRAPH.add_edge(3, 4, 2.0)<  y<
 
         # Serielle Schnittstelle öffnen (Port ggf. anpassen!)
         try:

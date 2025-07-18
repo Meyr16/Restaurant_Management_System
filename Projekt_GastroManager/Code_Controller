@@ -2,6 +2,7 @@ from machine import Pin, PWM
 import time
 import sys
 import select
+import json
 
 
 # Variabeln GUI
@@ -208,17 +209,7 @@ class ConsoleInputHandler:
                     print(f"Ungültiger Wert für {variable_name}: {value_str}.")
         else:
             print(f"Unbekanntes Kommandoformat: {command}.")
-        elif command == "GET STATUS":
-# Status als einfache Textzeilen ausgeben (kann vom PC gelesen werden)
-            print(f"SERVICE_ERWÜNSCHT: {SERVICE_ERWÜNSCHT}")
-            print(f"RECHNUNG_ERWÜNSCHT: {RECHNUNG_ERWÜNSCHT}")
-            print(f"SERVICE_ZAEHLER: {service_erwuenscht_zaehler}")
-            print(f"RECHNUNG_ZAEHLER: {rechnung_erwuenscht_zaehler}")
-            print(f"RESERVIERT: {TISCH_xxx_RESERVIERT}")
-            print(f"BELEGT: {TISCH_xxx_BELEGT}")
-            print(f"SERVICE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
-            print(f"RECHNUNG_ERLEDIGT: {TISCH_xxx_RECHNUNG_ERLEDIGT}")
-            print(f"GESEHEN: {TISCH_xxx_GESEHEN}")
+
 
 input_handler = ConsoleInputHandler()
 
@@ -232,6 +223,21 @@ print("   SET RECHNUNG_DONE ON/OFF")
 print("   SET GESEHEN ON/OFF") 
 print("   SET SERVICE_ZAEHLER <ZAHL>")
 print("   SET RECHNUNG_ZAEHLER <ZAHL>")
+
+
+def send_status():
+    status = {
+        "SERVICE_ERWUENSCHT": SERVICE_ERWÜNSCHT,
+        "RECHNUNG_ERWUENSCHT": RECHNUNG_ERWÜNSCHT,
+        "RESERVIERT": TISCH_xxx_RESERVIERT,
+        "BELEGT": TISCH_xxx_BELEGT,
+        "SERVICE_ERLEDIGT": TISCH_xxx_SERVIVE_ERLEDIGT,
+        "RECHNUNG_ERLEDIGT": TISCH_xxx_RECHNUNG_ERLEDIGT,
+        "GESEHEN": TISCH_xxx_GESEHEN,
+        "SERVICE_ZAEHLER": service_erwuenscht_zaehler,
+        "RECHNUNG_ZAEHLER": rechnung_erwuenscht_zaehler
+    }
+    print("STATUS:" + json.dumps(status))
 
 
 while True:
@@ -309,6 +315,9 @@ while True:
         TISCH_xxx_GESEHEN = False
         TISCH_xxx_SERVIVE_ERLEDIGT = False
         TISCH_xxx_RECHNUNG_ERLEDIGT = False
-    
+
+    send_status()  # <--- füge das hier ein, z.B. alle 0.5 Sekunden
+    time.sleep(0.5)
+
  
-    time.sleep(0.05) 
+    time.sleep(0.05)
