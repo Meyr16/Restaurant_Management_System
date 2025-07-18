@@ -1,9 +1,7 @@
+# main.py
 import tkinter as tk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
-import threading
-import serial
-import time
 import ds  
 
 # ========================================
@@ -99,13 +97,6 @@ class RestaurantGUI:
         self.build_ui()
         self.update_table_status()
 
-        # Serielle Schnittstelle öffnen (Port ggf. anpassen!)
-        try:
-            self.serial_port = serial.Serial("COM8", 9600, timeout=1)  # Passe COM3 auf deinen Port an!
-            threading.Thread(target=self.listen_serial, daemon=True).start()
-        except Exception as e:
-            messagebox.showerror("Fehler", f"Serielle Verbindung fehlgeschlagen:\n{e}")
-
     def build_ui(self):
         # — Tische-Frame —
         self.tables_frame = tk.Frame(self.root)
@@ -157,16 +148,9 @@ class RestaurantGUI:
         self.search_results.grid(row=1, column=0, columnspan=3, pady=5)
         self.search_results.bind("<<ListboxSelect>>", self.on_select_dish)
 
-        # — Statusanzeige für Service & Rechnung —
-        self.status_frame = ttk.LabelFrame(self.root, text="Live-Status", padding=10)
-        self.status_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
-
-        self.service_status_var = tk.StringVar(value="Servicewunsch: unbekannt")
-        self.rechnung_status_var = tk.StringVar(value="Rechnungswunsch: unbekannt")
-
-        ttk.Label(self.status_frame, textvariable=self.service_status_var).grid(row=0, column=0, sticky="w", padx=5)
-        ttk.Label(self.status_frame, textvariable=self.rechnung_status_var).grid(row=1, column=0, sticky="w", padx=5)
-
+    # ========================================
+    # Methoden zur Suchfunktion
+    # ========================================
     def search_dishes(self):
         term = self.search_entry.get().strip().lower()
         self.search_results.delete(0, tk.END)
@@ -190,6 +174,9 @@ class RestaurantGUI:
         price = next(p for d, p in DISHES if d == dish)
         messagebox.showinfo("Gericht gefunden", f"{dish}: {price:.2f} €")
 
+    # ========================================
+    # Rest der Methoden (wie in zuvor)
+    # ========================================
     def update_table_status(self):
         today = datetime.now().strftime("%d.%m.%Y")
         current_hour = datetime.now().hour
@@ -295,21 +282,6 @@ class RestaurantGUI:
         d = ds.shortest_path(SERVICE_GRAPH, src=1)
         txt = "\n".join(f"Tisch {k}: {v:.1f} m" for k, v in d.items())
         messagebox.showinfo("Servicewege ab Tisch 1", txt)
-
-    def listen_serial(self):
-        while True:
-            try:
-                if self.serial_port.in_waiting:
-                    line = self.serial_port.readline().decode("utf-8").strip()
-                    if line.startswith("STATUS SERVICE"):
-                        status = "aktiv" if "ON" in line else "inaktiv"
-                        self.service_status_var.set(f"Servicewunsch: {status}")
-                    elif line.startswith("STATUS RECHNUNG"):
-                        status = "aktiv" if "ON" in line else "inaktiv"
-                        self.rechnung_status_var.set(f"Rechnungswunsch: {status}")
-            except Exception as e:
-                print(f"Serieller Fehler: {e}")
-            time.sleep(0.1)
 
 # ========================================
 # Anwendung starten
