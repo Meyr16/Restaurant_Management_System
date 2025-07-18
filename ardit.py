@@ -3,7 +3,10 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
 import ds  
+import serial 
 
+Port = "COM3"
+Baud = 115200
 # ========================================
 # Daten für Gerichte und Getränke
 # ========================================
@@ -97,6 +100,13 @@ class RestaurantGUI:
         self.build_ui()
         self.update_table_status()
 
+        try:
+            self.ser = serial.Serial(Port, Baud, timeout=1)
+            print("Serielle Verbindung hergestellt.")
+        except serial.SerialException as e:
+            messagebox.showerror("Serial Error", f"Fehler beim Öffnen von {Port}:\n{e}")
+            self.ser = None
+
     def build_ui(self):
         # — Tische-Frame —
         self.tables_frame = tk.Frame(self.root)
@@ -148,6 +158,16 @@ class RestaurantGUI:
         self.search_results.grid(row=1, column=0, columnspan=3, pady=5)
         self.search_results.bind("<<ListboxSelect>>", self.on_select_dish)
 
+        #Bedienung/Rechnung Feld Tisch 1
+        self.status_frame = tk.LabelFrame(self.root, text="Tisch1 Status", padx=10, pady=10)
+        self.status_frame.grid(row=0, column=2, padx=10, pady=10, sticky="n")
+        self.service_var = tk.BooleanVar()
+        self.bill_var = tk.BooleanVar()
+        tk.Checkbutton(self.status_frame, text="Bedienung erwünscht", variable=self.service_var,
+                       command=self.trigger_service).pack(anchor="w")
+        tk.Checkbutton(self.status_frame, text="Rechnung erwünscht", variable=self.bill_var,
+                       command=self.trigger_bill).pack(anchor="w")
+        
     # ========================================
     # Methoden zur Suchfunktion
     # ========================================
@@ -283,6 +303,34 @@ class RestaurantGUI:
         txt = "\n".join(f"Tisch {k}: {v:.1f} m" for k, v in d.items())
         messagebox.showinfo("Servicewege ab Tisch 1", txt)
 
+    def trigger_service(self):
+        if self.service_var.get():
+            self.send_serial_command("SET SERVICE_ZAEHLER 1")
+            self.popup_status("Bedienung erwünscht", "Bedienung für Tisch 1 gewünscht.", self.service_var)
+
+    def trigger_bill(self):
+        if self.bill_var.get():
+            self.send_serial_command("SET RECHNUNG_ZAEHLER 1")
+            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_va
+
+    def popup_status(self, title, msg, var):
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        tk.Label(win, text=msg).pack(padx=20, pady=10)
+        def confirm():
+            var.set(False)
+            win.destroy()
+        tk.Button(win, text="Bestätigen", command=confirm).pack(pady=10)
+        
+    def send_serial_command(self, command):
+    if self.ser and self.ser.is_open:
+        try:
+            self.ser.write((command + '\n').encode('utf-8'))
+            print(f"[SERIAL OUT] {command}")
+        except Exception as e:
+            messagebox.showerror("Serial Error", f"Fehler beim Senden:\n{e}")
+    else:
+        print("Serielle Verbindung nicht geöffnet.")
 # ========================================
 # Anwendung starten
 # ========================================

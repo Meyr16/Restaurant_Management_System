@@ -208,7 +208,17 @@ class ConsoleInputHandler:
                     print(f"Ungültiger Wert für {variable_name}: {value_str}.")
         else:
             print(f"Unbekanntes Kommandoformat: {command}.")
-
+        elif command == "GET STATUS":
+# Status als einfache Textzeilen ausgeben (kann vom PC gelesen werden)
+            print(f"SERVICE_ERWÜNSCHT: {SERVICE_ERWÜNSCHT}")
+            print(f"RECHNUNG_ERWÜNSCHT: {RECHNUNG_ERWÜNSCHT}")
+            print(f"SERVICE_ZAEHLER: {service_erwuenscht_zaehler}")
+            print(f"RECHNUNG_ZAEHLER: {rechnung_erwuenscht_zaehler}")
+            print(f"RESERVIERT: {TISCH_xxx_RESERVIERT}")
+            print(f"BELEGT: {TISCH_xxx_BELEGT}")
+            print(f"SERVICE_ERLEDIGT: {TISCH_xxx_SERVIVE_ERLEDIGT}")
+            print(f"RECHNUNG_ERLEDIGT: {TISCH_xxx_RECHNUNG_ERLEDIGT}")
+            print(f"GESEHEN: {TISCH_xxx_GESEHEN}")
 
 input_handler = ConsoleInputHandler()
 
