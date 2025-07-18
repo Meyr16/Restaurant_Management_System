@@ -311,7 +311,7 @@ class RestaurantGUI:
     def trigger_bill(self):
         if self.bill_var.get():
             self.send_serial_command("SET RECHNUNG_ZAEHLER 1")
-            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_va
+            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_va)
 
     def popup_status(self, title, msg, var):
         win = tk.Toplevel(self.root)
@@ -323,14 +323,14 @@ class RestaurantGUI:
         tk.Button(win, text="Bestätigen", command=confirm).pack(pady=10)
         
     def send_serial_command(self, command):
-    if self.ser and self.ser.is_open:
-        try:
-            self.ser.write((command + '\n').encode('utf-8'))
-            print(f"[SERIAL OUT] {command}")
-        except Exception as e:
-            messagebox.showerror("Serial Error", f"Fehler beim Senden:\n{e}")
-    else:
-        print("Serielle Verbindung nicht geöffnet.")
+        if self.ser and self.ser.is_open:
+            try:
+                self.ser.write((command + '\n').encode('utf-8'))
+                print(f"[SERIAL OUT] {command}")
+            except Exception as e:
+                messagebox.showerror("Serial Error", f"Fehler beim Senden:\n{e}")
+        else:
+            print("Serielle Verbindung nicht geöffnet.")
 # ========================================
 # Anwendung starten
 # ========================================
