@@ -2,12 +2,13 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 from datetime import datetime, timedelta
-import ds  
+import ds
 import serial
 import json
 
-Port = "COM8"
+Port = "COM8"  # Passe ggf. an!
 Baud = 9600
+
 # ========================================
 # Daten für Gerichte und Getränke
 # ========================================
@@ -32,7 +33,7 @@ def get_next_7_days():
     return [(today + timedelta(days=i)).strftime("%d.%m.%Y") for i in range(7)]
 
 def get_time_slots():
-    return [f"{h}:00 - {h+2}:00" for h in range(16, 22, 2)]
+    return [f"{h}:00 - {h+2}:00" for h in range(12, 22, 2)]
 
 # ========================================
 # Klassen Table, Reservation, ReservationManager
@@ -107,7 +108,6 @@ class RestaurantGUI:
         except serial.SerialException as e:
             messagebox.showerror("Serial Error", f"Fehler beim Öffnen von {Port}:\n{e}")
             self.ser = None
-        # --- Starte das Polling ---
         self.poll_serial_status()
 
     def build_ui(self):
@@ -115,6 +115,7 @@ class RestaurantGUI:
         self.tables_frame = tk.Frame(self.root)
         self.tables_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
         self.table_buttons = []
+        self.occupied_vars = []  # NEU: Liste für Belegt-Status
         for i, table in enumerate(self.tables):
             btn = tk.Button(
                 self.tables_frame,
@@ -124,6 +125,24 @@ class RestaurantGUI:
             )
             btn.grid(row=i, column=0, pady=5)
             self.table_buttons.append(btn)
+
+            # NEU: Belegt/Ungenutzt-Button für jeden Tisch
+            occ_var = tk.BooleanVar()
+            self.occupied_vars.append(occ_var)
+            def make_occupied_cmd(tablenr, var=occ_var):
+                def cmd():
+                    if var.get():
+                        self.send_serial_command("SET BELEGT ON")
+                    else:
+                        self.send_serial_command("SET BELEGT OFF")
+                return cmd
+            occ_btn = tk.Checkbutton(
+                self.tables_frame,
+                text="Belegt",
+                variable=occ_var,
+                command=make_occupied_cmd(table.number, occ_var)
+            )
+            occ_btn.grid(row=i, column=1, padx=5)
 
         # — Reservierungsbereich —
         self.res_frame = ttk.LabelFrame(self.root, text="Reservierung", padding=10)
@@ -170,13 +189,25 @@ class RestaurantGUI:
                        command=self.trigger_service).pack(anchor="w")
         tk.Checkbutton(self.status_frame, text="Rechnung erwünscht", variable=self.bill_var,
                        command=self.trigger_bill).pack(anchor="w")
-        # --- NEU: Status-Labels ---
         self.status_labels = {}
-        for i, key in enumerate(["SERVICE_ERWUENSCHT", "RECHNUNG_ERWUENSCHT", "RESERVIERT", "BELEGT"]):
+        status_keys = [
+            "SERVICE_ERWUENSCHT", "RECHNUNG_ERWUENSCHT", "RESERVIERT", "BELEGT",
+            "SERVICE_ERLEDIGT", "RECHNUNG_ERLEDIGT", "GESEHEN"
+        ]
+        for key in status_keys:
             lbl = tk.Label(self.status_frame, text=f"{key}: ?")
             lbl.pack(anchor="w")
             self.status_labels[key] = lbl
-        
+
+        # Fortschrittsbalken für Service- und Rechnung-Zähler
+        tk.Label(self.status_frame, text="Service Dringlichkeit:").pack(anchor="w", pady=(10,0))
+        self.service_progress = ttk.Progressbar(self.status_frame, orient="horizontal", length=150, mode="determinate", maximum=10)
+        self.service_progress.pack(anchor="w", pady=(0,5))
+        tk.Label(self.status_frame, text="Rechnung Dringlichkeit:").pack(anchor="w")
+        self.bill_progress = ttk.Progressbar(self.status_frame, orient="horizontal", length=150, mode="determinate", maximum=10)
+        self.bill_progress.pack(anchor="w", pady=(0,5))
+        tk.Button(self.status_frame, text="Reset (alle Variablen)", command=self.reset_all).pack(anchor="w", pady=(10,0))
+
     # ========================================
     # Methoden zur Suchfunktion
     # ========================================
@@ -281,6 +312,8 @@ class RestaurantGUI:
             return
         self.res_manager.add_reservation(Reservation(name, table_number, date, slot))
         self.refresh_res()
+        # Microcontroller informieren
+        self.send_serial_command("SET RESERVIERT ON")
         messagebox.showinfo("Reserviert", "Erfolgreich.")
 
     def cancel_reservation(self):
@@ -293,6 +326,8 @@ class RestaurantGUI:
         slot = self.time_choice.get().strip()
         self.res_manager.remove_reservation(table_number, date, slot)
         self.refresh_res()
+        # Microcontroller informieren
+        self.send_serial_command("SET RESERVIERT OFF")
         messagebox.showinfo("Storniert", "Reservierung storniert.")
 
     def refresh_res(self):
@@ -320,17 +355,22 @@ class RestaurantGUI:
     def trigger_bill(self):
         if self.bill_var.get():
             self.send_serial_command("SET RECHNUNG_ZAEHLER 1")
-            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_va)
+            self.popup_status("Rechnung erwünscht", "Rechnung für Tisch 1 gewünscht.", self.bill_var)
 
     def popup_status(self, title, msg, var):
         win = tk.Toplevel(self.root)
         win.title(title)
-        tk.Labe>l(win, text=msg).pack(padx=20, pady=10)
+        tk.Label(win, text=msg).pack(padx=20, pady=10)
         def confirm():
+            # Beim Bestätigen den passenden Zähler auf 0 setzen
+            if "Bedienung" in title:
+                self.send_serial_command("SET SERVICE_ZAEHLER 0")
+            elif "Rechnung" in title:
+                self.send_serial_command("SET RECHNUNG_ZAEHLER 0")
             var.set(False)
             win.destroy()
         tk.Button(win, text="Bestätigen", command=confirm).pack(pady=10)
-        
+
     def send_serial_command(self, command):
         if self.ser and self.ser.is_open:
             try:
@@ -347,13 +387,36 @@ class RestaurantGUI:
                 line = self.ser.readline().decode("utf-8").strip()
                 if line.startswith("STATUS:"):
                     status = json.loads(line[7:])
+                    # Zähler zurücksetzen, wenn erledigt
+                    if status.get("SERVICE_ERLEDIGT"):
+                        status["SERVICE_ZAEHLER"] = 0
+                    if status.get("RECHNUNG_ERLEDIGT"):
+                        status["RECHNUNG_ZAEHLER"] = 0
+                    # Status-Labels aktualisieren
                     for key, lbl in self.status_labels.items():
                         val = status.get(key, "?")
                         lbl.config(text=f"{key}: {val}")
+                    # Fortschrittsbalken aktualisieren
+                    self.service_progress['value'] = status.get("SERVICE_ZAEHLER", 0)
+                    self.bill_progress['value'] = status.get("RECHNUNG_ZAEHLER", 0)
             except Exception as e:
                 print(f"Serial read error: {e}")
-        # Wiederholen nach 500ms
         self.root.after(500, self.poll_serial_status)
+
+    def reset_all(self):
+        cmds = [
+            "SET SERVICE_ERWUENSCHT OFF",
+            "SET RECHNUNG_ERWUENSCHT OFF",
+            "SET RESERVIERT OFF",
+            "SET BELEGT OFF",
+            "SET SERVICE_ERLEDIGT OFF",
+            "SET RECHNUNG_ERLEDIGT OFF",
+            "SET GESEHEN OFF",
+            "SET SERVICE_ZAEHLER 0",
+            "SET RECHNUNG_ZAEHLER 0"
+        ]
+        for cmd in cmds:
+            self.send_serial_command(cmd)
 # ========================================
 # Anwendung starten
 # ========================================
